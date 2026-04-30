@@ -8,9 +8,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Clock, Bell, Gift, Sun, Moon, Smartphone, Shield, RefreshCw } from 'lucide-react-native';
+import { Clock, Bell, Gift, Sun, Moon, Smartphone, Shield, RefreshCw, ExternalLink } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useFasting } from '@/contexts/FastingContext';
 import { useTheme, AppearanceMode } from '@/contexts/ThemeContext';
@@ -257,7 +258,7 @@ export default function SettingsScreen() {
                 <View style={styles.purchaseContent}>
                   <Text style={styles.purchaseTitle}>Remove Ads</Text>
                   <Text style={styles.purchaseSubtitle}>
-                    {product ? `${product.price} one-time purchase` : '$4.99 one-time purchase'}
+                    $4.99 one-time purchase
                   </Text>
                 </View>
                 {isPurchasing ? (
@@ -297,6 +298,15 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+          <View style={styles.divider} />
+          <TouchableOpacity 
+            style={styles.privacyPolicyButton}
+            onPress={() => Linking.openURL('https://christianappsfamily.github.io/daniel-fast-calculator/privacy')}
+            activeOpacity={0.7}
+          >
+            <ExternalLink size={18} color={colors.primary} />
+            <Text style={styles.privacyPolicyText}>Privacy Policy</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -555,5 +565,17 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleShe
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 19,
+  },
+  privacyPolicyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+  },
+  privacyPolicyText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: colors.primary,
   },
 });

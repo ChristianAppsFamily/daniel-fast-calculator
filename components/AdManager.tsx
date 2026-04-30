@@ -12,14 +12,18 @@ import {
 import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Ad unit IDs
-const BANNER_AD_UNIT_ID = __DEV__ 
-  ? TestIds.BANNER 
-  : 'ca-app-pub-3002325591150738/9683450640';
+// Production Ad unit IDs
+const BANNER_AD_UNIT_ID = Platform.select({
+  ios: 'ca-app-pub-3002325591150738/9683450640',
+  android: 'ca-app-pub-3002325591150738/4141981051',
+  default: 'ca-app-pub-3002325591150738/9683450640',
+});
 
-const INTERSTITIAL_AD_UNIT_ID = __DEV__
-  ? TestIds.INTERSTITIAL
-  : 'ca-app-pub-3002325591150738/4291523162';
+const INTERSTITIAL_AD_UNIT_ID = Platform.select({
+  ios: 'ca-app-pub-3002325591150738/4291523162',
+  android: 'ca-app-pub-3002325591150738/1901681741',
+  default: 'ca-app-pub-3002325591150738/4291523162',
+});
 
 // Keys for AsyncStorage
 const CALCULATION_COUNT_KEY = '@calculation_count';
@@ -50,9 +54,12 @@ export const initializeAds = async (): Promise<void> => {
       if (status === 'granted') {
         // User allowed tracking - can use personalized ads
         console.log('User allowed tracking - personalized ads enabled');
-      } else {
+      } else if (status === 'denied') {
         // User denied tracking - use non-personalized ads
         console.log('User denied tracking - using non-personalized ads');
+      } else {
+        // Not determined or other status
+        console.log('ATT status:', status, '- using non-personalized ads');
       }
     }
 
@@ -65,10 +72,11 @@ export const initializeAds = async (): Promise<void> => {
 
 const loadInterstitialAd = () => {
   if (interstitialAd) {
+    // @ts-ignore - destroy exists at runtime but types are outdated
     interstitialAd.destroy();
   }
 
-  interstitialAd = InterstitialAd.createForAdRequest(INTERSTITIAL_AD_UNIT_ID, {
+  interstitialAd = InterstitialAd.createForAdRequest(INTERSTITIAL_AD_UNIT_ID!, {
     requestNonPersonalizedAdsOnly: true, // Default to non-personalized for safety
   });
 
@@ -128,6 +136,7 @@ export const setAdsRemoved = async (removed: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(ADS_REMOVED_KEY, removed ? 'true' : 'false');
     if (removed && interstitialAd) {
+      // @ts-ignore - destroy exists at runtime but types are outdated
       interstitialAd.destroy();
       interstitialAd = null;
     }

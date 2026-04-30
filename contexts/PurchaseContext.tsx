@@ -48,7 +48,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Query product details
         const { responseCode, results } = await InAppPurchases.getProductsAsync([REMOVE_ADS_PRODUCT_ID]);
         
-        if (responseCode === InAppPurchases.IAPResponseCode.OK && results.length > 0) {
+        if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
           setProduct(results[0]);
           console.log('Product found:', results[0].title, results[0].price);
         } else {
@@ -99,7 +99,8 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     return () => {
-      subscription.remove();
+      // @ts-ignore - cleanup
+      subscription?.remove?.();
     };
   }, [isConnected]);
 
