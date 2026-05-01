@@ -32,7 +32,15 @@ function RootLayoutNav() {
 export default function RootLayout() {
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => {});
-    initializeAds().catch(console.error);
+    
+    // Initialize ads with better error handling
+    initializeAds()
+      .then(() => {
+        console.log('[App] Ads initialized successfully');
+      })
+      .catch((error) => {
+        console.error('[App] Failed to initialize ads:', error);
+      });
   }, []);
 
   return (

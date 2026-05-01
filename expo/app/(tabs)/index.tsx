@@ -832,10 +832,13 @@ export default function CalculatorScreen() {
             </Animated.View>
           )}
           
-          {/* Banner Ad at bottom */}
-          <BannerAdComponent />
         </ScrollView>
       </TouchableWithoutFeedback>
+      
+      {/* Banner Ad at bottom - outside ScrollView for proper rendering */}
+      <View style={[styles.bannerAdContainer, { paddingBottom: insets.bottom }]}>
+        <BannerAdComponent />
+      </View>
 
       {Platform.OS === 'ios' && (
         <InputAccessoryView nativeID={INPUT_ACCESSORY_ID}>
@@ -1508,6 +1511,14 @@ const createStyles = (colors: ReturnType<typeof import('@/contexts/ThemeContext'
     fontSize: 14,
     fontWeight: '600' as const,
     color: colors.white,
+  },
+  bannerAdContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+    zIndex: 100,
   },
 
 });
