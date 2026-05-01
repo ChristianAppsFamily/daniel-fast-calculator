@@ -306,14 +306,18 @@ For mobile apps, you'll configure your app's deep linking scheme in `app.json`.
 
 ### **Run on your iPhone from Xcode (local StoreKit / AdMob testing)**
 
-From the `expo` directory: install dependencies, generate native projects, then open the workspace in Xcode and run on your device (signing team required).
+The `ios/` folder is **not committed** (it is listed in `.gitignore`). After a fresh clone, or if `ios/` was deleted, **generate it again** before opening Xcode:
 
 ```bash
-cd expo && bun install && npx expo prebuild --platform ios
-open ios/*.xcworkspace
+cd expo
+npm install --legacy-peer-deps   # or bun install
+npx expo prebuild --platform ios
+open ios/DanielFastCalculator.xcworkspace
 ```
 
-Use a **development build** or **release** scheme as needed; configure the Remove Ads IAP product in App Store Connect with ID `com.christianappempire.danielfast.removeads`.
+Pick your **Team** in the Xcode target signing settings, choose your **physical device**, then Run. Use a **development** or **release** scheme as needed; configure the Remove Ads IAP product in App Store Connect with ID `com.christianappempire.danielfast.removeads`.
+
+If native modules or `app.json` plugins change, run `npx expo prebuild --platform ios --clean` and reopen the workspace.
 
 ### **Need help with native features?**
 
