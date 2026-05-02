@@ -10,12 +10,14 @@ import mobileAds, {
 import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Debug flag - set to true to see ad status overlay
 const SHOW_AD_DEBUG = __DEV__;
 
-/** Google sample ads in dev / simulator; your real units in release App Store builds. */
-const useGoogleSampleTestUnits =
-  __DEV__ || process.env.EXPO_PUBLIC_USE_ADMOB_TEST_IDS === '1';
+/**
+ * Use real AdMob unit IDs only when explicitly enabled (e.g. EAS production / App Store).
+ * Otherwise use Google's sample units so Xcode Debug *and* Release builds always receive fill.
+ */
+const useProductionAdUnits =
+  process.env.EXPO_PUBLIC_ADMOB_USE_PRODUCTION_UNITS === '1';
 
 const PROD_BANNER_UNIT = Platform.select({
   ios: 'ca-app-pub-3002325591150738/9683450640',
@@ -29,13 +31,51 @@ const PROD_INTERSTITIAL_UNIT = Platform.select({
   default: 'ca-app-pub-3002325591150738/4291523162',
 });
 
-const BANNER_AD_UNIT_ID = useGoogleSampleTestUnits ? TestIds.BANNER : PROD_BANNER_UNIT!;
+const BANNER_AD_UNIT_ID = useProductionAdUnits ? PROD_BANNER_UNIT! : TestIds.BANNER;
 
-const INTERSTITIAL_AD_UNIT_ID = useGoogleSampleTestUnits
-  ? TestIds.INTERSTITIAL
-  : PROD_INTERSTITIAL_UNIT!;
+const INTERSTITIAL_AD_UNIT_ID = useProductionAdUnits
+  ? PROD_INTERSTITIAL_UNIT!
+  : TestIds.INTERSTITIAL;
 
-// Ad status for debugging
+function parseTestDeviceIdsFromEnv(): string[] {
+  const raw = process.env.EXPO_PUBLIC_ADMOB_TEST_DEVICE_IDS;
+  if (!raw?.trim()) return [];
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Google requires this list before `initialize()` on physical devices when using
+ * production units, and it improves reliability for sample units on some devices.
+ * @see https://developers.google.com/admob/ios/test-ads
+ */
+function buildTestDeviceIdentifiers(): string[] {
+  const ids = new Set<string>(parseTestDeviceIdsFromEnv());
+  if (Platform.OS === 'android') {
+    ids.add('EMULATOR');
+  }
+  return [...ids];
+}
+
+// Keys for AsyncStorage
+const CALCULATION_COUNT_KEY = '@calculation_count';
+const ADS_REMOVED_KEY = '@ads_removed';
+
+let interstitialAd: InterstitialAd | null = null;
+let isInterstitialLoaded = false;
+let interstitialNpaOnly = true;
+/** Set during initializeAds; banner reads after sdkReady. */
+let bannerRequestNpaOnly = true;
+
+let resolveMobileAdsReady: (() => void) | null = null;
+export const mobileAdsInitPromise = new Promise<void>((resolve) => {
+  resolveMobileAdsReady = resolve;
+});
+
+function signalMobileAdsReady(): void {
+  resolveMobileAdsReady?.();
+  resolveMobileAdsReady = null;
+}
+
 interface AdStatus {
   initialized: boolean;
   attStatus: string | null;
@@ -56,23 +96,13 @@ let globalAdStatus: AdStatus = {
 
 export const getAdStatus = (): AdStatus => ({ ...globalAdStatus });
 
-// Keys for AsyncStorage
-const CALCULATION_COUNT_KEY = '@calculation_count';
-const ADS_REMOVED_KEY = '@ads_removed';
-
-let interstitialAd: InterstitialAd | null = null;
-let isInterstitialLoaded = false;
-/** Matches latest ATT choice for interstitial reloads after close. */
-let interstitialNpaOnly = true;
-
 export const initializeAds = async (): Promise<void> => {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
-    console.log('[Ads] Skipping initialization - not on mobile platform');
-    return;
-  }
-
   try {
-    // Check if ads were removed via purchase
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      console.log('[Ads] Skipping initialization - not on mobile platform');
+      return;
+    }
+
     const adsRemoved = await AsyncStorage.getItem(ADS_REMOVED_KEY);
     if (adsRemoved === 'true') {
       console.log('[Ads] Disabled - user purchased removal');
@@ -89,20 +119,35 @@ export const initializeAds = async (): Promise<void> => {
       personalizedOk = status === 'granted';
     }
 
+    const testDeviceIdentifiers = buildTestDeviceIdentifiers();
+    if (testDeviceIdentifiers.length > 0) {
+      await mobileAds().setRequestConfiguration({ testDeviceIdentifiers });
+      console.log('[Ads] Request configuration set, test devices:', testDeviceIdentifiers.join(', '));
+    } else if (!useProductionAdUnits) {
+      console.log(
+        '[Ads] Tip: if sample ads still show no-fill on a physical iPhone, add your device ID from Xcode logs to EXPO_PUBLIC_ADMOB_TEST_DEVICE_IDS in .env',
+      );
+    }
+
     console.log('[Ads] Initializing mobile ads...');
     await mobileAds().initialize();
     console.log('[Ads] Mobile ads initialized successfully');
     globalAdStatus.initialized = true;
 
-    interstitialNpaOnly = !personalizedOk;
+    // Sample units: allow personalized requests (better fill). Production: respect ATT.
+    interstitialNpaOnly = useProductionAdUnits ? !personalizedOk : false;
+    bannerRequestNpaOnly = interstitialNpaOnly;
+
     loadInterstitialAd(interstitialNpaOnly);
   } catch (error) {
     console.error('[Ads] Error initializing ads:', error);
     globalAdStatus.initialized = false;
+  } finally {
+    signalMobileAdsReady();
   }
 };
 
-const loadInterstitialAd = (requestNonPersonalizedAdsOnly = true) => {
+const loadInterstitialAd = (requestNonPersonalizedAdsOnly: boolean) => {
   if (interstitialAd) {
     // @ts-ignore - destroy exists at runtime but types are outdated
     interstitialAd.destroy();
@@ -126,8 +171,11 @@ const loadInterstitialAd = (requestNonPersonalizedAdsOnly = true) => {
     loadInterstitialAd(interstitialNpaOnly);
   });
 
-  interstitialAd.addAdEventListener(AdEventType.ERROR, (error: any) => {
-    const errorMsg = error?.message || JSON.stringify(error) || 'Unknown error';
+  interstitialAd.addAdEventListener(AdEventType.ERROR, (error: unknown) => {
+    const errorMsg =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : JSON.stringify(error);
     console.error('[Ads] Interstitial ad error:', errorMsg);
     isInterstitialLoaded = false;
     globalAdStatus.interstitialLoaded = false;
@@ -139,21 +187,18 @@ const loadInterstitialAd = (requestNonPersonalizedAdsOnly = true) => {
 
 export const showInterstitialAd = async (): Promise<void> => {
   try {
-    // Check if ads were removed
     const adsRemoved = await AsyncStorage.getItem(ADS_REMOVED_KEY);
     if (adsRemoved === 'true') {
       return;
     }
 
-    // Get current calculation count
     const countStr = await AsyncStorage.getItem(CALCULATION_COUNT_KEY);
     let count = parseInt(countStr || '0', 10);
     count += 1;
 
-    // Show ad every 3rd calculation
     if (count >= 3) {
-      count = 0; // Reset counter
-      
+      count = 0;
+
       if (isInterstitialLoaded && interstitialAd) {
         console.log('[Ads] Showing interstitial ad');
         interstitialAd.show();
@@ -162,7 +207,6 @@ export const showInterstitialAd = async (): Promise<void> => {
       }
     }
 
-    // Save updated count
     await AsyncStorage.setItem(CALCULATION_COUNT_KEY, count.toString());
   } catch (error) {
     console.error('[Ads] Error showing interstitial ad:', error);
@@ -173,7 +217,7 @@ export const setAdsRemoved = async (removed: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(ADS_REMOVED_KEY, removed ? 'true' : 'false');
     if (removed && interstitialAd) {
-      // @ts-ignore - destroy exists at runtime but types are outdated
+      // @ts-ignore
       interstitialAd.destroy();
       interstitialAd = null;
     }
@@ -200,9 +244,14 @@ export const BannerAdComponent: React.FC<BannerAdComponentProps> = ({ visible = 
   const [adsRemoved, setAdsRemovedState] = useState(false);
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState<string | null>(null);
+  const [sdkReady, setSdkReady] = useState(false);
 
   useEffect(() => {
     checkAdsStatus();
+  }, []);
+
+  useEffect(() => {
+    void mobileAdsInitPromise.then(() => setSdkReady(true));
   }, []);
 
   const checkAdsStatus = async () => {
@@ -217,34 +266,48 @@ export const BannerAdComponent: React.FC<BannerAdComponentProps> = ({ visible = 
   return (
     <View style={styles.bannerWrapper}>
       <View style={styles.bannerContainer}>
-        <BannerAd
-          unitId={BANNER_AD_UNIT_ID}
-          size={BannerAdSize.BANNER}
-          requestOptions={{ requestNonPersonalizedAdsOnly: true }}
-          onAdLoaded={() => {
-            console.log('[Ads] Banner ad loaded successfully');
-            setAdLoaded(true);
-            setAdError(null);
-            globalAdStatus.bannerLoaded = true;
-            globalAdStatus.bannerError = null;
-          }}
-          onAdFailedToLoad={(error: any) => {
-            const errorMsg = error?.message || JSON.stringify(error) || 'Unknown error';
-            console.error('[Ads] Banner ad failed to load:', errorMsg);
-            setAdLoaded(false);
-            setAdError(errorMsg);
-            globalAdStatus.bannerLoaded = false;
-            globalAdStatus.bannerError = errorMsg;
-          }}
-        />
+        {!sdkReady ? (
+          <View style={styles.placeholder} />
+        ) : (
+          <BannerAd
+            unitId={BANNER_AD_UNIT_ID}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            requestOptions={{ requestNonPersonalizedAdsOnly: bannerRequestNpaOnly }}
+            onAdLoaded={() => {
+              console.log('[Ads] Banner ad loaded successfully');
+              setAdLoaded(true);
+              setAdError(null);
+              globalAdStatus.bannerLoaded = true;
+              globalAdStatus.bannerError = null;
+            }}
+            onAdFailedToLoad={(error: unknown) => {
+              const errorMsg =
+                error && typeof error === 'object' && 'message' in error
+                  ? String((error as { message: unknown }).message)
+                  : JSON.stringify(error);
+              console.error('[Ads] Banner ad failed to load:', errorMsg);
+              setAdLoaded(false);
+              setAdError(errorMsg);
+              globalAdStatus.bannerLoaded = false;
+              globalAdStatus.bannerError = errorMsg;
+            }}
+          />
+        )}
       </View>
       {SHOW_AD_DEBUG && (
         <View style={styles.debugOverlay}>
           <Text style={styles.debugText}>
-            {adLoaded ? '✅ Banner Loaded' : adError ? `❌ Error: ${adError.substring(0, 50)}` : '⏳ Loading...'}
+            {!sdkReady
+              ? '⏳ SDK init…'
+              : adLoaded
+                ? '✅ Banner Loaded'
+                : adError
+                  ? `❌ ${adError.substring(0, 45)}`
+                  : '⏳ Loading ad…'}
           </Text>
           <Text style={styles.debugTextSmall}>
-            Unit: {BANNER_AD_UNIT_ID === TestIds.BANNER ? 'TEST' : 'PROD'}
+            {useProductionAdUnits ? 'PROD units' : 'SAMPLE test units'} · ATT:{' '}
+            {globalAdStatus.attStatus ?? 'n/a'}
           </Text>
         </View>
       )}
@@ -260,10 +323,14 @@ const styles = StyleSheet.create({
   },
   bannerContainer: {
     width: '100%',
-    height: 50, // Fixed height for BANNER size (320x50)
+    minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+  },
+  placeholder: {
+    width: '100%',
+    height: 50,
   },
   debugOverlay: {
     position: 'absolute',

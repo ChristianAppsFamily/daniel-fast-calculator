@@ -319,6 +319,8 @@ Pick your **Team** in the Xcode target signing settings, choose your **physical 
 
 If native modules or `app.json` plugins change, run `npx expo prebuild --platform ios --clean` and reopen the workspace.
 
+**AdMob:** By default the app uses **Google sample ad units** so banners fill during Xcode Debug or Release. For the live App Store binary, set `EXPO_PUBLIC_ADMOB_USE_PRODUCTION_UNITS=1` in EAS (or your release `.env`). If a physical iPhone still shows no-fill, add the device ID from the Xcode log to `EXPO_PUBLIC_ADMOB_TEST_DEVICE_IDS` (see `.env.example`).
+
 ### **Need help with native features?**
 
 - Check [Expo's documentation](https://docs.expo.dev/) for native APIs
