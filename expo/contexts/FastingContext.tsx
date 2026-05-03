@@ -2,8 +2,11 @@ import createContextHook from '@nkzw/create-context-hook';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { consumePendingWatchCancelFastId } from 'watch-fast-sync';
 import { FastingRecord, AppSettings, DEFAULT_SETTINGS } from '@/types/fasting';
+import { syncActiveFastToNativeWatch } from '@/lib/watchNativeSync';
 
 const HISTORY_KEY = 'fasting_history';
 const SETTINGS_KEY = 'fasting_settings';
@@ -169,6 +172,48 @@ export const [FastingProvider, useFasting] = createContextHook(() => {
     }
     updateFastingRecord(id, { status: 'cancelled', reminderSet: false, reminderId: undefined });
   }, [history, updateFastingRecord]);
+
+  /** Mirror active fast to App Group + Apple Watch whenever local history-derived active fast changes. */
+  useEffect(() => {
+    void syncActiveFastToNativeWatch(activeFast);
+  }, [
+    activeFast?.id,
+    activeFast?.startTime,
+    activeFast?.endTime,
+    activeFast?.status,
+    activeFast?.fastingFrom?.join(','),
+    activeFast?.fastingType,
+    activeFast?.customFastingType,
+  ]);
+
+  /**
+   * Polls a pending cancel token written by the watch companion (shared defaults).
+   * When it matches the current active fast id, cancels that fast on the phone.
+   */
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    const tick = async () => {
+      const pending = await consumePendingWatchCancelFastId();
+      if (!pending || !activeFast || pending !== activeFast.id) return;
+      await cancelFast(pending);
+    };
+
+    interval = setInterval(() => {
+      void tick();
+    }, 800);
+
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void tick();
+    });
+
+    void tick();
+
+    return () => {
+      if (interval) clearInterval(interval);
+      sub.remove();
+    };
+  }, [activeFast?.id, activeFast, cancelFast]);
 
   const setReminderForFast = useCallback((id: string, reminderId: string) => {
     updateFastingRecord(id, { reminderSet: true, reminderId });

@@ -1,0 +1,11 @@
+{
+  "name": "watch-fast-sync",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
