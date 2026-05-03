@@ -27,7 +27,7 @@ import { useFasting } from '@/contexts/FastingContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FAST_PRESETS, FASTING_TYPES, FastingType } from '@/types/fasting';
 import { getDailyVerse } from '@/constants/bibleVerses';
-import { BannerAdComponent, showInterstitialAd } from '@/components/AdManager';
+import { BannerAdComponent } from '@/components/AdManager';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -203,10 +203,7 @@ export default function CalculatorScreen() {
 
   const calculateEndTime = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Show interstitial ad every 3rd calculation
-    showInterstitialAd().catch(console.error);
-    
+
     if (activeFast && !currentFastId) {
       setShowReplaceModal(true);
       return;
@@ -528,15 +525,16 @@ export default function CalculatorScreen() {
   }, [calculatedEnd, hours, minutes, fastCompleted, timeRemaining, getFastingFromDisplay, formatDateTime, startTime]);
 
   return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
     <KeyboardAvoidingView 
-      style={[styles.container, { backgroundColor: colors.background }]} 
+      style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       <TouchableWithoutFeedback onPress={dismissKeyboard}>
         <ScrollView 
           style={styles.scrollView} 
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -834,11 +832,6 @@ export default function CalculatorScreen() {
           
         </ScrollView>
       </TouchableWithoutFeedback>
-      
-      {/* Banner Ad at bottom - outside ScrollView for proper rendering */}
-      <View style={[styles.bannerAdContainer, { paddingBottom: insets.bottom }]}>
-        <BannerAdComponent />
-      </View>
 
       {Platform.OS === 'ios' && (
         <InputAccessoryView nativeID={INPUT_ACCESSORY_ID}>
@@ -942,15 +935,35 @@ export default function CalculatorScreen() {
         </Animated.View>
       )}
     </KeyboardAvoidingView>
+
+      <View
+        style={[
+          styles.calculatorBannerFooter,
+          { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 6) },
+        ]}
+      >
+        <BannerAdComponent />
+      </View>
+    </View>
   );
 }
 
 const createStyles = (colors: ReturnType<typeof import('@/contexts/ThemeContext').useTheme>['colors']) => StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
   scrollView: {
     flex: 1,
+  },
+  calculatorBannerFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingTop: 6,
   },
   content: {
     padding: 20,
@@ -1512,13 +1525,4 @@ const createStyles = (colors: ReturnType<typeof import('@/contexts/ThemeContext'
     fontWeight: '600' as const,
     color: colors.white,
   },
-  bannerAdContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'transparent',
-    zIndex: 100,
-  },
-
 });

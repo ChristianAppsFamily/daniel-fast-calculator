@@ -7,10 +7,12 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import { useFasting } from '@/contexts/FastingContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FastingRecord } from '@/types/fasting';
+import { BannerAdComponent } from '@/components/AdManager';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -24,6 +26,7 @@ interface DayFasts {
 }
 
 export default function CalendarScreen() {
+  const insets = useSafeAreaInsets();
   const { history, settings } = useFasting();
   const { colors } = useTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -236,6 +239,15 @@ export default function CalendarScreen() {
         </View>
       </View>
 
+      <View
+        style={[
+          styles.bannerFooter,
+          { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 6) },
+        ]}
+      >
+        <BannerAdComponent />
+      </View>
+
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -367,7 +379,13 @@ const createStyles = (colors: ReturnType<typeof import('@/contexts/ThemeContext'
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  bannerFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
     marginTop: 'auto',
+    paddingTop: 6,
+    alignItems: 'center',
+    backgroundColor: colors.background,
   },
   legendItem: {
     flexDirection: 'row',

@@ -17,6 +17,7 @@ import { useFasting } from '@/contexts/FastingContext';
 import { useTheme, AppearanceMode } from '@/contexts/ThemeContext';
 import { usePurchase } from '@/contexts/PurchaseContext';
 import { PRIVACY_POLICY_URL } from '@/constants/legal';
+import { BannerAdComponent } from '@/components/AdManager';
 
 interface SettingRowProps {
   icon: React.ReactNode;
@@ -168,6 +169,10 @@ export default function SettingsScreen() {
         style={styles.scrollView}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
       >
+      <View style={styles.headerBannerSlot}>
+        <BannerAdComponent />
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Appearance</Text>
         <View style={styles.sectionCard}>
@@ -403,6 +408,13 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleShe
   },
   content: {
     padding: 20,
+  },
+  headerBannerSlot: {
+    marginHorizontal: -20,
+    marginTop: -4,
+    marginBottom: 12,
+    paddingTop: 4,
+    alignItems: 'center',
   },
   section: {
     marginBottom: 28,

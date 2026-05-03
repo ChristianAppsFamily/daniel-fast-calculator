@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   StyleSheet,
   Text,
@@ -9,6 +10,11 @@ import {
   Modal,
   Share,
 } from 'react-native';
+import {
+  BannerAdComponent,
+  onFastingTabFocused,
+  onStartNewFastFromFastingScreen,
+} from '@/components/AdManager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Trash2, Clock, Calendar, Timer, X, Play, Share2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -153,7 +159,10 @@ export default function HistoryScreen() {
     if (activeFast) {
       setShowStartNewModal(true);
     } else {
-      router.push('/(tabs)');
+      void (async () => {
+        await onStartNewFastFromFastingScreen();
+        router.push('/(tabs)');
+      })();
     }
   }, [activeFast, router]);
 
@@ -162,8 +171,15 @@ export default function HistoryScreen() {
       await cancelFast(activeFast.id);
     }
     setShowStartNewModal(false);
+    await onStartNewFastFromFastingScreen();
     router.push('/(tabs)');
   }, [activeFast, cancelFast, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void onFastingTabFocused();
+    }, []),
+  );
 
   const getFastingFromDisplay = useCallback((item: FastingRecord): string[] => {
     if (item.fastingFrom && item.fastingFrom.length > 0) {
@@ -392,7 +408,12 @@ export default function HistoryScreen() {
       </Text>
       <TouchableOpacity 
         style={styles.emptyStartButton}
-        onPress={() => router.push('/(tabs)')}
+        onPress={() => {
+          void (async () => {
+            await onStartNewFastFromFastingScreen();
+            router.push('/(tabs)');
+          })();
+        }}
       >
         <Play size={18} color={colors.white} />
         <Text style={styles.emptyStartButtonText}>Start a Fast</Text>
@@ -421,6 +442,20 @@ export default function HistoryScreen() {
     </>
   ), [renderActiveFastSection, pastFasts.length, styles, handleClearHistory, colors]);
 
+  const renderListFooter = useCallback(
+    () => (
+      <View
+        style={[
+          styles.bannerFooter,
+          { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) },
+        ]}
+      >
+        <BannerAdComponent />
+      </View>
+    ),
+    [colors.border, insets.bottom, styles],
+  );
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -436,9 +471,10 @@ export default function HistoryScreen() {
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderListHeader}
+        ListFooterComponent={renderListFooter}
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: insets.bottom + 20 },
+          { paddingBottom: 12 },
           pastFasts.length === 0 && !activeFast && styles.emptyListContent,
         ]}
         ListEmptyComponent={!activeFast ? renderEmptyState : null}
@@ -496,6 +532,15 @@ const createStyles = (colors: ReturnType<typeof import('@/contexts/ThemeContext'
   listContent: {
     padding: 20,
     gap: 12,
+  },
+  bannerFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+    marginTop: 8,
+    alignItems: 'center',
+    backgroundColor: colors.background,
   },
   emptyListContent: {
     flex: 1,

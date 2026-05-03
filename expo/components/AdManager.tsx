@@ -59,6 +59,10 @@ function buildTestDeviceIdentifiers(): string[] {
 // Keys for AsyncStorage
 const CALCULATION_COUNT_KEY = '@calculation_count';
 const ADS_REMOVED_KEY = '@ads_removed';
+const FASTING_TAB_VISIT_COUNT_KEY = '@fasting_tab_visit_count';
+const FASTING_TAB_START_NEW_COUNT_KEY = '@fasting_tab_start_new_count';
+const INTERSTITIAL_24H_TIMESTAMPS_KEY = '@interstitial_24h_timestamps';
+const MS_24H = 24 * 60 * 60 * 1000;
 
 let interstitialAd: InterstitialAd | null = null;
 let isInterstitialLoaded = false;
@@ -185,6 +189,7 @@ const loadInterstitialAd = (requestNonPersonalizedAdsOnly: boolean) => {
   interstitialAd.load();
 };
 
+/** Legacy calculator hook (optional); fasting screen uses fasting-specific helpers below. */
 export const showInterstitialAd = async (): Promise<void> => {
   try {
     const adsRemoved = await AsyncStorage.getItem(ADS_REMOVED_KEY);
@@ -212,6 +217,82 @@ export const showInterstitialAd = async (): Promise<void> => {
     console.error('[Ads] Error showing interstitial ad:', error);
   }
 };
+
+async function tryShowInterstitialWith24hCap(): Promise<void> {
+  try {
+    const adsRemoved = await AsyncStorage.getItem(ADS_REMOVED_KEY);
+    if (adsRemoved === 'true') {
+      return;
+    }
+
+    const raw = await AsyncStorage.getItem(INTERSTITIAL_24H_TIMESTAMPS_KEY);
+    const now = Date.now();
+    let timestamps: number[] = [];
+    try {
+      timestamps = raw ? (JSON.parse(raw) as number[]) : [];
+      if (!Array.isArray(timestamps)) timestamps = [];
+    } catch {
+      timestamps = [];
+    }
+
+    const recent = timestamps.filter((t) => typeof t === 'number' && now - t < MS_24H);
+    if (recent.length >= 2) {
+      console.log('[Ads] Interstitial: 2 per 24h cap reached');
+      return;
+    }
+
+    if (!isInterstitialLoaded || !interstitialAd) {
+      console.log('[Ads] Interstitial not ready (fasting trigger)');
+      return;
+    }
+
+    recent.push(now);
+    await AsyncStorage.setItem(INTERSTITIAL_24H_TIMESTAMPS_KEY, JSON.stringify(recent));
+    console.log('[Ads] Showing interstitial (fasting screen rule)');
+    interstitialAd.show();
+  } catch (e) {
+    console.error('[Ads] tryShowInterstitialWith24hCap', e);
+  }
+}
+
+/** Call when the Fasting tab gains focus. Shows on 3rd, 6th, 9th… visit if under daily cap. */
+export async function onFastingTabFocused(): Promise<void> {
+  try {
+    const adsRemoved = await AsyncStorage.getItem(ADS_REMOVED_KEY);
+    if (adsRemoved === 'true') return;
+
+    const prev = parseInt((await AsyncStorage.getItem(FASTING_TAB_VISIT_COUNT_KEY)) || '0', 10);
+    const visit = prev + 1;
+    await AsyncStorage.setItem(FASTING_TAB_VISIT_COUNT_KEY, String(visit));
+
+    if (visit >= 3 && visit % 3 === 0) {
+      await tryShowInterstitialWith24hCap();
+    }
+  } catch (e) {
+    console.error('[Ads] onFastingTabFocused', e);
+  }
+}
+
+/**
+ * Call when user commits to starting a new fast from the Fasting tab (navigate to calculator
+ * or confirm modal). Shows on 2nd, 4th, 6th… start if under daily cap.
+ */
+export async function onStartNewFastFromFastingScreen(): Promise<void> {
+  try {
+    const adsRemoved = await AsyncStorage.getItem(ADS_REMOVED_KEY);
+    if (adsRemoved === 'true') return;
+
+    const prev = parseInt((await AsyncStorage.getItem(FASTING_TAB_START_NEW_COUNT_KEY)) || '0', 10);
+    const n = prev + 1;
+    await AsyncStorage.setItem(FASTING_TAB_START_NEW_COUNT_KEY, String(n));
+
+    if (n >= 2 && n % 2 === 0) {
+      await tryShowInterstitialWith24hCap();
+    }
+  } catch (e) {
+    console.error('[Ads] onStartNewFastFromFastingScreen', e);
+  }
+}
 
 export const setAdsRemoved = async (removed: boolean): Promise<void> => {
   try {
